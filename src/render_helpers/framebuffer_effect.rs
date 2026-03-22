@@ -16,6 +16,7 @@ use smithay::utils::{Buffer, Logical, Physical, Rectangle, Scale, Transform};
 use crate::backend::tty::{TtyFrame, TtyRenderer, TtyRendererError};
 use crate::render_helpers::background_effect::{EffectSubregion, RenderParams};
 use crate::render_helpers::blur::{Blur, BlurOptions};
+use crate::render_helpers::liquid_glass::{LiquidGlass, LiquidGlassOptions};
 use crate::render_helpers::renderer::AsGlesFrame as _;
 use crate::render_helpers::shaders::{mat3_uniform, Shaders};
 
@@ -33,6 +34,7 @@ pub struct FramebufferEffectElement {
     subregion: Option<EffectSubregion>,
     scale: f32,
     blur_options: Option<BlurOptions>,
+    liquid_glass_options: Option<LiquidGlassOptions>,
     noise: f32,
     saturation: f32,
 }
@@ -41,6 +43,7 @@ pub struct FramebufferEffectElement {
 struct Inner {
     framebuffer: Option<GlesTexture>,
     blur: Option<Blur>,
+    liquid_glass: Option<LiquidGlass>,
     intermediate: Option<GlesTexture>,
     /// Reusable storage for subregion-filtered damage rects.
     subregion_damage: Vec<Rectangle<i32, Physical>>,
@@ -56,6 +59,7 @@ impl FramebufferEffect {
         ns: Option<usize>,
         params: RenderParams,
         blur_options: Option<BlurOptions>,
+        liquid_glass_options: Option<LiquidGlassOptions>,
         noise: f32,
         saturation: f32,
     ) -> Option<FramebufferEffectElement> {
@@ -76,6 +80,7 @@ impl FramebufferEffect {
             subregion: params.subregion,
             scale: params.scale as f32,
             blur_options,
+            liquid_glass_options,
             noise,
             saturation,
         };
@@ -235,6 +240,18 @@ impl RenderElement<GlesRenderer> for FramebufferEffectElement {
                     blur = None;
                 }
             }
+            let mut liquid_glass =
+                Option::zip(inner.liquid_glass.as_mut(), self.liquid_glass_options);
+            if let Some((b, _)) = &mut liquid_glass {
+                let renderer = guard.as_mut();
+                if let Err(err) = b.prepare_textures(
+                    |fourcc, size| renderer.create_buffer(fourcc, size),
+                    framebuffer,
+                ) {
+                    warn!("error preparing liquid_glass textures: {err:?}");
+                    liquid_glass = None;
+                }
+            }
 
             // We can't use renderer.with_context() as that will reset the GlesFrame binding that we
             // want to blit from.
@@ -262,6 +279,9 @@ impl RenderElement<GlesRenderer> for FramebufferEffectElement {
                     0,
                 );
 
+                gl.ClearColor(0.0, 0.0, 0.0, 0.0);
+                gl.Clear(ffi::COLOR_BUFFER_BIT);
+
                 gl.BlitFramebuffer(
                     dst.loc.x,
                     dst.loc.y,
@@ -288,16 +308,29 @@ impl RenderElement<GlesRenderer> for FramebufferEffectElement {
                 }
             })??;
 
-            // If blur is off, use the unblurred texture.
+            let mut current_input_texture = framebuffer.clone();
+
+            if let Some((liquid_glass, options)) = liquid_glass {
+                let mut guard = frame.renderer();
+                let renderer = guard.as_mut();
+                match liquid_glass.render(renderer, &current_input_texture, options) {
+                    Ok(result) => current_input_texture = result,
+                    Err(err) => {
+                        warn!("error rendering liquid_glass: {err:?}");
+                    }
+                }
+            }
+
+            // If blur is off, use the current_input_texture.
             if self.blur_options.is_none() {
-                inner.intermediate = Some(framebuffer.clone());
+                inner.intermediate = Some(current_input_texture.clone());
                 return Ok(());
             }
 
             if let Some((blur, options)) = blur {
                 let mut guard = frame.renderer();
                 let renderer = guard.as_mut();
-                match blur.render(renderer, framebuffer, options) {
+                match blur.render(renderer, &current_input_texture, options) {
                     Ok(blurred) => inner.intermediate = Some(blurred),
                     Err(err) => {
                         warn!("error rendering blur: {err:?}");
@@ -441,6 +474,7 @@ impl Inner {
         Inner {
             framebuffer: None,
             blur: Blur::new(renderer),
+            liquid_glass: LiquidGlass::new(renderer),
             intermediate: None,
             subregion_damage: Vec::new(),
         }

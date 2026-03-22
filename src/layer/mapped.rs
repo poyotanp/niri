@@ -81,7 +81,7 @@ impl MappedLayer {
             view_size,
             scale,
             shadow: Shadow::new(shadow_config),
-            background_effect: BackgroundEffect::new(config.blur),
+            background_effect: BackgroundEffect::new(config.blur, config.liquid_glass),
             clock,
         }
     }
@@ -93,7 +93,9 @@ impl MappedLayer {
         shadow_config.merge_with(&self.rules.shadow);
         self.shadow.update_config(shadow_config);
 
-        self.background_effect.update_config(config.blur);
+        self.background_effect.update_blur_config(config.blur);
+        self.background_effect
+            .update_liquid_glass_config(config.liquid_glass);
     }
 
     pub fn update_shaders(&mut self) {

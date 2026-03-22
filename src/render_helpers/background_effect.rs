@@ -22,12 +22,14 @@ pub struct BackgroundEffect {
     // FIXME: would be good to remove this duplication of radius.
     corner_radius: CornerRadius,
     blur_config: niri_config::Blur,
+    liquid_glass_config: niri_config::LiquidGlass,
     options: Options,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Options {
     pub blur: bool,
+    pub liquid_glass: bool,
     pub xray: bool,
     pub noise: Option<f64>,
     pub saturation: Option<f64>,
@@ -37,6 +39,7 @@ impl Options {
     fn is_visible(&self) -> bool {
         self.xray
             || self.blur
+            || self.liquid_glass
             || self.noise.is_some_and(|x| x > 0.)
             || self.saturation.is_some_and(|x| x != 1.)
     }
@@ -157,22 +160,35 @@ niri_render_elements! {
 }
 
 impl BackgroundEffect {
-    pub fn new(blur_config: niri_config::Blur) -> Self {
+    pub fn new(
+        blur_config: niri_config::Blur,
+        liquid_glass_config: niri_config::LiquidGlass,
+    ) -> Self {
         Self {
             nonxray: FramebufferEffect::new(),
             damage: ExtraDamage::new(),
             corner_radius: CornerRadius::default(),
             blur_config,
+            liquid_glass_config,
             options: Options::default(),
         }
     }
 
-    pub fn update_config(&mut self, config: niri_config::Blur) {
+    pub fn update_blur_config(&mut self, config: niri_config::Blur) {
         if self.blur_config == config {
             return;
         }
 
         self.blur_config = config;
+        self.damage.damage_all();
+    }
+
+    pub fn update_liquid_glass_config(&mut self, config: niri_config::LiquidGlass) {
+        if self.liquid_glass_config == config {
+            return;
+        }
+
+        self.liquid_glass_config = config;
         self.damage.damage_all();
     }
 
@@ -191,6 +207,7 @@ impl BackgroundEffect {
 
         let mut options = Options {
             blur,
+            liquid_glass: effect.liquid_glass == Some(true),
             xray: effect.xray == Some(true),
             noise: effect.noise,
             saturation: effect.saturation,
@@ -236,10 +253,12 @@ impl BackgroundEffect {
 
         let damage = self.damage.render(params.geometry);
 
-        // Use noise/saturation from options, falling back to blur defaults if blurred, and
-        // to no effect if not blurred.
         let blur = self.options.blur && !self.blur_config.off;
+        let liquid_glass = self.options.liquid_glass && !self.liquid_glass_config.off;
+
         let blur_options = blur.then_some(BlurOptions::from(self.blur_config));
+        let liquid_glass_options =
+            liquid_glass.then_some(self.liquid_glass_config.into());
         let noise = if blur { self.blur_config.noise } else { 0. };
         let noise = self.options.noise.unwrap_or(noise) as f32;
         let saturation = if blur {
@@ -267,7 +286,9 @@ impl BackgroundEffect {
         } else {
             // Render non-xray effect.
             let elem = &self.nonxray;
-            if let Some(elem) = elem.render(ns, params, blur_options, noise, saturation) {
+            if let Some(elem) =
+                elem.render(ns, params, blur_options, liquid_glass_options, noise, saturation)
+            {
                 push(damage.into());
                 push(elem.into());
             }

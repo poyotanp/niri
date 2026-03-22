@@ -198,7 +198,7 @@ impl<W: LayoutElement> Tile<W> {
             shadow: Shadow::new(shadow_config),
             sizing_mode,
             fullscreen_backdrop: SolidColorBuffer::new((0., 0.), [0., 0., 0., 1.]),
-            background_effect: BackgroundEffect::new(options.blur),
+            background_effect: BackgroundEffect::new(options.blur, options.liquid_glass),
             restore_to_floating: false,
             floating_window_size: None,
             floating_pos: None,
@@ -256,7 +256,9 @@ impl<W: LayoutElement> Tile<W> {
         let shadow_config = self.options.layout.shadow.merged_with(&rules.shadow);
         self.shadow.update_config(shadow_config);
 
-        self.background_effect.update_config(self.options.blur);
+        self.background_effect.update_blur_config(self.options.blur);
+        self.background_effect
+            .update_liquid_glass_config(self.options.liquid_glass);
     }
 
     pub fn update_shaders(&mut self) {

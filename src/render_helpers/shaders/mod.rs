@@ -9,6 +9,7 @@ use smithay::backend::renderer::gles::{
 use super::renderer::NiriRenderer;
 use super::shader_element::ShaderProgram;
 use crate::render_helpers::blur::BlurProgram;
+use crate::render_helpers::liquid_glass::LiquidGlassProgram;
 
 pub struct Shaders {
     pub border: Option<ShaderProgram>,
@@ -18,6 +19,7 @@ pub struct Shaders {
     pub resize: Option<ShaderProgram>,
     pub gradient_fade: Option<GlesTexProgram>,
     pub blur: Option<BlurProgram>,
+    pub liquid_glass: Option<LiquidGlassProgram>,
     pub custom_resize: RefCell<Option<ShaderProgram>>,
     pub custom_close: RefCell<Option<ShaderProgram>>,
     pub custom_open: RefCell<Option<ShaderProgram>>,
@@ -148,6 +150,12 @@ impl Shaders {
             })
             .ok();
 
+        let liquid_glass = LiquidGlassProgram::compile(renderer)
+            .map_err(|err| {
+                warn!("error compiling liquid_glass shader: {err:?}");
+            })
+            .ok();
+
         Self {
             border,
             shadow,
@@ -156,6 +164,7 @@ impl Shaders {
             resize,
             gradient_fade,
             blur,
+            liquid_glass,
             custom_resize: RefCell::new(None),
             custom_close: RefCell::new(None),
             custom_open: RefCell::new(None),

@@ -1056,12 +1056,78 @@ impl MergeWith<BlurPart> for Blur {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LiquidGlass {
+    pub off: bool,
+    pub inset_px: f64,
+    pub border_radius_px: f64,
+    pub edge_width_px: f64,
+    pub edge_softness_px: f64,
+    pub max_warp_px: f64,
+    pub interior_warp_px: f64,
+    pub white_tint: f64,
+    pub edge_highlight: f64,
+}
+
+impl Default for LiquidGlass {
+    fn default() -> Self {
+        Self {
+            off: false,
+            inset_px: 2.0,
+            border_radius_px: 12.0,
+            edge_width_px: 12.0,
+            edge_softness_px: 2.0,
+            max_warp_px: 20.0,
+            interior_warp_px: 3.0,
+            white_tint: 0.0,
+            edge_highlight: 0.0,
+        }
+    }
+}
+
+#[derive(knuffel::Decode, Debug, Default, Clone, Copy, PartialEq)]
+pub struct LiquidGlassPart {
+    #[knuffel(child)]
+    pub off: bool,
+    #[knuffel(child)]
+    pub on: bool,
+    #[knuffel(child, unwrap(argument))]
+    pub inset_px: Option<FloatOrInt<0, 1000>>,
+    #[knuffel(child, unwrap(argument))]
+    pub border_radius_px: Option<FloatOrInt<0, 1000>>,
+    #[knuffel(child, unwrap(argument))]
+    pub edge_width_px: Option<FloatOrInt<0, 1000>>,
+    #[knuffel(child, unwrap(argument))]
+    pub edge_softness_px: Option<FloatOrInt<0, 1000>>,
+    #[knuffel(child, unwrap(argument))]
+    pub max_warp_px: Option<FloatOrInt<0, 1000>>,
+    #[knuffel(child, unwrap(argument))]
+    pub interior_warp_px: Option<FloatOrInt<0, 1000>>,
+    #[knuffel(child, unwrap(argument))]
+    pub white_tint: Option<FloatOrInt<0, 1000>>,
+    #[knuffel(child, unwrap(argument))]
+    pub edge_highlight: Option<FloatOrInt<0, 1000>>,
+}
+
+impl MergeWith<LiquidGlassPart> for LiquidGlass {
+    fn merge_with(&mut self, part: &LiquidGlassPart) {
+        self.off |= part.off;
+        if part.on {
+            self.off = false;
+        }
+
+        merge!((self, part), inset_px, border_radius_px, edge_width_px, edge_softness_px, max_warp_px, interior_warp_px, white_tint, edge_highlight);
+    }
+}
+
 #[derive(knuffel::Decode, Debug, Default, Clone, Copy, PartialEq)]
 pub struct BackgroundEffectRule {
     #[knuffel(child, unwrap(argument))]
     pub xray: Option<bool>,
     #[knuffel(child, unwrap(argument))]
     pub blur: Option<bool>,
+    #[knuffel(child, unwrap(argument))]
+    pub liquid_glass: Option<bool>,
     #[knuffel(child, unwrap(argument))]
     pub noise: Option<FloatOrInt<0, 1000>>,
     #[knuffel(child, unwrap(argument))]
@@ -1070,7 +1136,7 @@ pub struct BackgroundEffectRule {
 
 impl MergeWith<Self> for BackgroundEffectRule {
     fn merge_with(&mut self, part: &Self) {
-        merge_clone_opt!((self, part), xray, blur, noise, saturation);
+        merge_clone_opt!((self, part), xray, blur, liquid_glass, noise, saturation);
     }
 }
 
@@ -1092,13 +1158,15 @@ pub struct BackgroundEffect {
     /// - `Some(true)`: always blur
     pub blur: Option<bool>,
 
+    pub liquid_glass: Option<bool>,
+
     pub noise: Option<f64>,
     pub saturation: Option<f64>,
 }
 
 impl MergeWith<BackgroundEffectRule> for BackgroundEffect {
     fn merge_with(&mut self, part: &BackgroundEffectRule) {
-        merge_clone_opt!((self, part), xray, blur);
+        merge_clone_opt!((self, part), xray, blur, liquid_glass);
 
         if let Some(x) = part.noise {
             self.noise = Some(x.0);
